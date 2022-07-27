@@ -69,8 +69,8 @@ class HelpScout(object):
         response = self.s.get(url)
         article = response.json().get('article')
         if article is None:
-            print response.status_code
-            print response.json()
+            print(response.status_code)
+            print(response.json())
         article['collection'] = self.collections[article['collectionId']]
         article['categories'] = map(lambda c: self.categories[c]['slug'], article['categories'])
         return article
@@ -85,23 +85,37 @@ def html_to_markdown(html):
     h = html2text.HTML2Text()
     return h.handle(html)
 
-def markdown_from_article(article):
-    body = html_to_markdown(article['text'])
+def article_to_metadata(article):
     metadata = {
         'collection': article['collection']['slug'],
-        'categories': article['categories'],
+        'categories': list(article['categories']),
         'keywords': article['keywords'],
         'name': article['name'],
         'helpscout_url': article['publicUrl'],
         'slug': article['slug'],
     }
 
-    return metadata_to_frontmatter(metadata) + body
+    return metadata
+
+def markdown_from_article(article):
+    body = html_to_markdown(article['text'])
+    metadata = article_to_metadata(article)
+
+    return f'\n{metadata}\n{body}\n'
+    # return metadata_to_frontmatter(metadata) + body
 
 
-def write_article(article):
+def write_article(article, article_format):
     path = 'articles/{}'.format(article['collection']['slug'])
-    filename = '{}/{}.md'.format(path, article['slug'])
+
+    if article_format == "markdown":
+        filename = '{}/{}.md'.format(path, article['slug'])
+    elif article_format == "html":
+        filename = '{}/{}.html'.format(path, article['slug'])
+    elif article_format == "json":
+        filename = '{}/{}.json'.format(path, article['slug'])
+    
+    filename_meta = '{}/metadata.json'.format(path, article['slug'])
 
     try:
         os.mkdir(path)
@@ -110,7 +124,14 @@ def write_article(article):
         pass
 
     with codecs.open(filename, "w", "utf-8") as f:
-        f.write(markdown_from_article(article))
+        if article_format == "markdown":
+            f.write(markdown_from_article(article))
+        elif article_format == "html":
+            f.write(article['text'])
+        elif article_format == "json":
+            metadata = article_to_metadata(article)
+            metadata['content'] = article['text']
+            json.dump(metadata, f, ensure_ascii=False, indent=4)
 
 
 def export(h):
@@ -124,7 +145,9 @@ def export(h):
         articles = h.get_collection_articles(collection)
         for article_id in map(lambda a: a['id'], articles):
             article = h.get_article(article_id)
-            write_article(article)
+            # write_article(article, "html")
+            # write_article(article, "mardown")
+            write_article(article, "json")
 
 
 def export_metadata(h):
