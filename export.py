@@ -1,17 +1,22 @@
 import os
 import codecs
 import requests
+import re
 import yaml
 import html2text
 import json
 from decouple import config
 from pprint import pprint
+from bs4 import BeautifulSoup as bs
+from urllib.parse import urlsplit, urlunsplit
+import html
 
 from datetime import datetime
 
 # config is fetched from ".env" file in working directory
 API_KEY = config('HELPSCOUT_API_KEY')
 COLLECTION_ID = config('COLLECTION_ID')
+COLLECTION_URL_BASE = config('COLLECTION_URL_BASE')
 
 
 class HelpScout(object):
@@ -164,6 +169,67 @@ def article_to_metadata_hugo(article):
 
     return metadata
 
+def find_links_in_text(text):
+    # Given a chunk of text, find local links
+    soup = bs(text, features="html.parser")
+
+    for link in soup.findAll('a'):
+        href=link.get('href')
+        #if it's a "local" link, strip off the base url and number, leaving the slug
+
+        if href is not None:
+
+            split_href = urlsplit(href)
+            regex = ""
+            if split_href.netloc == (COLLECTION_URL_BASE) \
+                or re.match('^\s*[0-9]*-[a-zA-Z]*',href):
+                # absolute link to local resource
+                
+                newlink="#undefined"
+                #strip the URL down to just the slug (without the preceding "NNNN-")
+                if split_href.path.startswith("/category/"):
+                    restype = "CATEGORY"
+                    newlink = re.sub('/category/\d+-', '', split_href.path)
+                elif split_href.path.startswith("/article/"):
+                    restype="ARTICLE"
+                    newlink = re.sub('/article/\d+-', '', split_href.path)
+                else:
+                    restype="UNKNOWN TYPE"
+                    newlink = re.sub('^\d+-', '', split_href.path)
+                print("link to local ",restype, href)  
+
+                link['href'] = newlink
+
+            elif href.startswith("/"):
+                # relative link to local resource
+                #print("relative link to local resource", href)
+                # ACTION: locate manually & remove "/"
+                ...
+
+            elif href.startswith("#"):
+                # in-page link to local resource
+                #print("in-page link: ", href)
+                # ACTION: leave in place
+                ...
+
+            elif href.startswith("http"):
+                # other link
+                #print("Other external link: ", href)
+                # ACTION: leave in place
+                ...
+
+            elif href.startswith("mailto:"):
+                #print("Mailto link: ", href)
+                # ACTION: leave in place
+                ...
+
+            else:
+                print("Other link: ", href)
+                # ACTION: leave in place
+                ...
+    return str(soup)        
+            
+
 def markdown_from_article(article):
     body = html_to_markdown(article['text'])
     metadata = article_to_metadata(article)
@@ -172,7 +238,14 @@ def markdown_from_article(article):
     # return metadata_to_frontmatter(metadata) + body
 
 def markdown_hugo_from_article(article):
-    body = html_to_markdown(article['text'])
+    print("\n*** Processing ", article['slug'])
+    newtext = find_links_in_text(article['text'])
+    try:
+        body = html_to_markdown(newtext)
+    except:
+        body = html_to_markdown(article['text'])
+        print("failed converting ", article['slug'])
+        print( article['text'] )
     metadata = metadata_to_frontmatter(article_to_metadata_hugo(article))
 
     return f'{metadata}\n{body}\n'
@@ -197,7 +270,7 @@ def check_category_dir(slug, name):
         metadata_fm = metadata_to_frontmatter(metadata)
         with codecs.open(index_file_path, "w", "utf-8") as f:
             f.write(metadata_fm)
-            print("wrote index file: ", index_file_path)
+            print("\nwrote index file: ", index_file_path)
 
 def write_article(article, article_format):
     path = 'articles/{}'.format(article['collection']['slug'])
@@ -251,7 +324,7 @@ def export(h):
             articles = h.get_collection_articles(collection)
             for article_id in map(lambda a: a['id'], articles):
                 article = h.get_article(article_id)
-                print(article['slug'])
+                #print(article['slug'])
                 # write_article(article, "html")
                 # write_article(article, "mardown")
                 #write_article(article, "json")
