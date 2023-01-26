@@ -7,7 +7,11 @@ import json
 from decouple import config
 from pprint import pprint
 
+from datetime import datetime
+
+# config is fetched from ".env" file in working directory
 API_KEY = config('HELPSCOUT_API_KEY')
+COLLECTION_ID = config('COLLECTION_ID')
 
 
 class HelpScout(object):
@@ -39,6 +43,19 @@ class HelpScout(object):
                     self._categories[category['id']] = category
 
         return self._categories
+
+    def get_category_slug_by_id(self, id):
+        if self.categories:
+            return self.categories[id]['slug']
+        else:
+            return None
+
+    def get_category_name_by_id(self, id):
+        if self.categories:
+            return self.categories[id]['name']
+        else:
+            return None
+
 
     def get_collection_articles(self, collection_id, status='published'):
         params = {
@@ -72,7 +89,16 @@ class HelpScout(object):
             print(response.status_code)
             print(response.json())
         article['collection'] = self.collections[article['collectionId']]
-        article['categories'] = map(lambda c: self.categories[c]['slug'], article['categories'])
+        catslugs = []
+        catnames = []
+        for catid in article['categories']:
+            catslugs.append( self.get_category_slug_by_id(catid) )
+            catnames.append( self.get_category_name_by_id(catid) )
+
+        article['categories'] = catslugs
+        article['categories_by_name'] = catnames
+        article['tags'] = ['docs']
+
         return article
 
 
@@ -86,13 +112,54 @@ def html_to_markdown(html):
     return h.handle(html)
 
 def article_to_metadata(article):
+    safe_keywords = None
+    try:
+        #print(article['keywords'])
+        safe_keywords = article['keywords']
+    except KeyError:
+        safe_keywords = '[]'
+        print("Key error found for article ", article['publicUrl'])
+    
     metadata = {
         'collection': article['collection']['slug'],
         'categories': list(article['categories']),
-        'keywords': article['keywords'],
+        'helpscout_url': article['publicUrl'],
+        'keywords': safe_keywords,
         'name': article['name'],
+        'slug': article['slug'],
+    }
+
+    return metadata
+
+def article_to_metadata_hugo(article):
+    safe_keywords = None
+    try:
+        #print(article['keywords'])
+        safe_keywords = article['keywords']
+    except KeyError:
+        safe_keywords = '[]'
+        print("Key error found for article ", article['publicUrl'])
+    
+    #TODO assemble & tidy any hugo-specific FM fields here:
+
+    # lastPublishedAt = '2021-03-10T15:43:15Z' -> parse datetime,
+    # convert to date only & don't convert to string
+    INPUT_DATE_FORMAT="%Y-%m-%dT%H:%M:%SZ"
+
+    hugo_lastPublishedAt = datetime.strptime(article['lastPublishedAt'], INPUT_DATE_FORMAT)
+    hugo_categories = list(article['categories_by_name'])
+    hugo_tags = article['tags'] + safe_keywords
+
+    metadata = {
+        'collection': article['collection']['slug'],
+        'categories': hugo_categories,
+        'date': hugo_lastPublishedAt,
+        'description': article['name'],
         'helpscout_url': article['publicUrl'],
         'slug': article['slug'],
+        'tags': hugo_tags,
+        'title': article['name'],
+
     }
 
     return metadata
@@ -101,14 +168,48 @@ def markdown_from_article(article):
     body = html_to_markdown(article['text'])
     metadata = article_to_metadata(article)
 
-    return f'\n{metadata}\n{body}\n'
+    return f'{metadata}\n{body}\n'
     # return metadata_to_frontmatter(metadata) + body
 
+def markdown_hugo_from_article(article):
+    body = html_to_markdown(article['text'])
+    metadata = metadata_to_frontmatter(article_to_metadata_hugo(article))
+
+    return f'{metadata}\n{body}\n'
+
+def check_category_dir(slug, name):
+    path = 'articles/{}'.format(name)
+    if not os.path.exists(path):
+        try:
+            os.mkdir(path)
+        except OSError:
+            # directory exists. I hope. should probably check for explict error code
+            pass
+    index_file_path = os.path.join(path, "_index.md")
+    if not os.path.exists(index_file_path):
+        metadata = {
+            'description': "Articles about X",
+            'title': name,
+            'linkTitle': name,
+            'weight': 1,
+            'tags': ["docs"]
+        }
+        metadata_fm = metadata_to_frontmatter(metadata)
+        with codecs.open(index_file_path, "w", "utf-8") as f:
+            f.write(metadata_fm)
+            print("wrote index file: ", index_file_path)
 
 def write_article(article, article_format):
     path = 'articles/{}'.format(article['collection']['slug'])
 
     if article_format == "markdown":
+        filename = '{}/{}.md'.format(path, article['slug'])
+    elif article_format == "markdown_hugo":
+        primary_category = article['categories'][0]
+        primary_category_name = article['categories_by_name'][0]
+        path = 'articles/{}'.format(primary_category_name)
+        # check category directory exists and has _index.md file
+        check_category_dir(primary_category, primary_category_name)
         filename = '{}/{}.md'.format(path, article['slug'])
     elif article_format == "html":
         filename = '{}/{}.html'.format(path, article['slug'])
@@ -117,15 +218,18 @@ def write_article(article, article_format):
     
     filename_meta = '{}/metadata.json'.format(path, article['slug'])
 
-    try:
-        os.mkdir(path)
-    except OSError:
-        # directory exists. I hope. should probably check for explict error code
-        pass
+    if not os.path.exists(path):
+        try:
+            os.mkdir(path)
+        except OSError:
+            # directory exists. I hope. should probably check for explict error code
+            pass
 
     with codecs.open(filename, "w", "utf-8") as f:
         if article_format == "markdown":
             f.write(markdown_from_article(article))
+        elif article_format == "markdown_hugo":
+            f.write(markdown_hugo_from_article(article))
         elif article_format == "html":
             f.write(article['text'])
         elif article_format == "json":
@@ -135,19 +239,23 @@ def write_article(article, article_format):
 
 
 def export(h):
-    try:
-        os.mkdir('articles')
-    except OSError:
-        # directory exists. I hope. should probably check for explict error code
-        pass
+    if not os.path.exists('articles'):
+        try:
+            os.mkdir('articles')
+        except OSError:
+            # directory exists. I hope. should probably check for explict error code
+            pass
 
     for collection in h.collections.keys():
-        articles = h.get_collection_articles(collection)
-        for article_id in map(lambda a: a['id'], articles):
-            article = h.get_article(article_id)
-            # write_article(article, "html")
-            # write_article(article, "mardown")
-            write_article(article, "json")
+        if collection == COLLECTION_ID:
+            articles = h.get_collection_articles(collection)
+            for article_id in map(lambda a: a['id'], articles):
+                article = h.get_article(article_id)
+                print(article['slug'])
+                # write_article(article, "html")
+                # write_article(article, "mardown")
+                #write_article(article, "json")
+                write_article(article, "markdown_hugo")
 
 
 def export_metadata(h):
