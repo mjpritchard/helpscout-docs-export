@@ -270,7 +270,7 @@ def check_category_dir(slug, name):
         metadata_fm = metadata_to_frontmatter(metadata)
         with codecs.open(index_file_path, "w", "utf-8") as f:
             f.write(metadata_fm)
-            print("\nwrote index file: ", index_file_path)
+            print("\nwrote index file WITH CHILDREN: ", index_file_path)
 
 def write_article(article, article_format):
     path = 'articles/{}'.format(article['collection']['slug'])
