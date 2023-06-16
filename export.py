@@ -8,7 +8,7 @@ import json
 from decouple import config
 from pprint import pprint
 from bs4 import BeautifulSoup as bs
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlparse
 import html
 
 from datetime import datetime
@@ -102,7 +102,7 @@ class HelpScout(object):
 
         article['categories'] = catslugs
         article['categories_by_name'] = catnames
-        article['tags'] = ['docs']
+        #article['tags'] = ['docs']
 
         return article
 
@@ -124,7 +124,7 @@ def article_to_metadata(article):
     except KeyError:
         safe_keywords = '[]'
         print("Key error found for article ", article['publicUrl'])
-    
+
     metadata = {
         'collection': article['collection']['slug'],
         'categories': list(article['categories']),
@@ -142,7 +142,7 @@ def article_to_metadata_hugo(article):
         #print(article['keywords'])
         safe_keywords = article['keywords']
     except KeyError:
-        safe_keywords = '[]'
+        safe_keywords = []
         print("Key error found for article ", article['publicUrl'])
     
     #TODO assemble & tidy any hugo-specific FM fields here:
@@ -153,19 +153,25 @@ def article_to_metadata_hugo(article):
 
     hugo_lastPublishedAt = datetime.strptime(article['lastPublishedAt'], INPUT_DATE_FORMAT)
     hugo_categories = list(article['categories_by_name'])
-    hugo_tags = article['tags'] + safe_keywords
+    hugo_tags = []
+    if "tags" in article:
+        hugo_tags += article['tags']
+    if len(safe_keywords) > 0:
+        hugo_tags += safe_keywords
+
+    relative_url = urlparse(article['publicUrl']).path
 
     metadata = {
         'collection': article['collection']['slug'],
         'categories': hugo_categories,
         'date': hugo_lastPublishedAt,
         'description': article['name'],
-        'helpscout_url': article['publicUrl'],
+        'aliases': relative_url,
         'slug': article['slug'],
-        'tags': hugo_tags,
         'title': article['name'],
-
     }
+    if len(hugo_tags) > 0:
+        metadata["tags"] = hugo_tags
 
     return metadata
 
@@ -264,8 +270,8 @@ def check_category_dir(slug, name):
             'description': "Articles about X",
             'title': name,
             'linkTitle': name,
-            'weight': 1,
-            'tags': ["docs"]
+            'weight': 1
+            #'tags': ["docs"]
         }
         metadata_fm = metadata_to_frontmatter(metadata)
         with codecs.open(index_file_path, "w", "utf-8") as f:
