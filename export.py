@@ -181,11 +181,15 @@ def find_links_in_text(text):
 
     for link in soup.findAll('a'):
         href=link.get('href')
+        print("link content is", link.content)
         #if it's a "local" link, strip off the base url and number, leaving the slug
 
         if href is not None:
 
             split_href = urlsplit(href)
+
+            print("split_href = ", split_href)
+
             regex = ""
             if split_href.netloc == (COLLECTION_URL_BASE) \
                 or re.match('^\s*[0-9]*-[a-zA-Z]*',href):
@@ -233,6 +237,12 @@ def find_links_in_text(text):
                 print("Other link: ", href)
                 # ACTION: leave in place
                 ...
+    
+    for img in soup.findAll('img'):
+        print("found an image:", img.get('src'))
+        # make a local copy of the image as an asset for this page
+         
+
     return str(soup)        
             
 
@@ -279,23 +289,17 @@ def check_category_dir(slug, name):
             print("\nwrote index file WITH CHILDREN: ", index_file_path)
 
 def write_article(article, article_format):
-    path = 'articles/{}'.format(article['collection']['slug'])
+    #path = 'articles/{}'.format(article['collection']['slug'])
 
-    if article_format == "markdown":
-        filename = '{}/{}.md'.format(path, article['slug'])
-    elif article_format == "markdown_hugo":
+    if article_format == "markdown_hugo":
         primary_category = article['categories'][0]
         primary_category_name = article['categories_by_name'][0]
-        path = 'articles/{}'.format(primary_category_name)
+        path = 'articles/{}/{}'.format(primary_category_name, article['slug'])
         # check category directory exists and has _index.md file
         check_category_dir(primary_category, primary_category_name)
-        filename = '{}/{}.md'.format(path, article['slug'])
-    elif article_format == "html":
-        filename = '{}/{}.html'.format(path, article['slug'])
-    elif article_format == "json":
-        filename = '{}/{}.json'.format(path, article['slug'])
+        filename = '{}/_index.md'.format(path)
     
-    filename_meta = '{}/metadata.json'.format(path, article['slug'])
+    filename_meta = '{}/metadata.json'.format(path, filename)
 
     if not os.path.exists(path):
         try:
@@ -305,17 +309,8 @@ def write_article(article, article_format):
             pass
 
     with codecs.open(filename, "w", "utf-8") as f:
-        if article_format == "markdown":
-            f.write(markdown_from_article(article))
-        elif article_format == "markdown_hugo":
+        if article_format == "markdown_hugo":
             f.write(markdown_hugo_from_article(article))
-        elif article_format == "html":
-            f.write(article['text'])
-        elif article_format == "json":
-            metadata = article_to_metadata(article)
-            metadata['content'] = article['text']
-            json.dump(metadata, f, ensure_ascii=False, indent=4)
-
 
 def export(h):
     if not os.path.exists('articles'):
