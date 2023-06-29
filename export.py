@@ -9,6 +9,8 @@ from decouple import config
 from pprint import pprint
 from bs4 import BeautifulSoup as bs
 from urllib.parse import urlsplit, urlparse
+from urllib.request import urlretrieve
+from urllib.error import HTTPError
 import html
 
 from datetime import datetime
@@ -106,6 +108,29 @@ class HelpScout(object):
 
         return article
 
+def get_local_image(url, article):
+    # create local copy i.e. download image from url
+    # store in same folder as article
+    # return new url of article (= relative path to image stored locally)
+    
+    # find the bit we could use as a filename in the url
+    split_url = urlsplit(url)
+    # make path components if they don't exist yet
+
+    primary_category_name = article['categories_by_name'][0]
+
+    base_path = 'articles/{}/{}'.format(primary_category_name, article['slug'])
+
+    if not os.path.exists(base_path):
+        os.mkdirsx(base_path)
+
+    path = "/".join([base_path, split_url.path.rsplit('/', 1)[-1]])
+    try:
+        urlretrieve(url, path)
+    except HTTPError:
+        path = None
+    return path
+
 
 def metadata_to_frontmatter(metadata):
     frontmatter = '---\n{yaml}---\n'.format(yaml=yaml.safe_dump(metadata, default_flow_style=False))
@@ -175,9 +200,9 @@ def article_to_metadata_hugo(article):
 
     return metadata
 
-def find_links_in_text(text):
+def find_links_in_text(article):
     # Given a chunk of text, find local links
-    soup = bs(text, features="html.parser")
+    soup = bs(article['text'], features="html.parser")
 
     for link in soup.findAll('a'):
         href=link.get('href')
@@ -187,8 +212,6 @@ def find_links_in_text(text):
         if href is not None:
 
             split_href = urlsplit(href)
-
-            print("split_href = ", split_href)
 
             regex = ""
             if split_href.netloc == (COLLECTION_URL_BASE) \
@@ -239,9 +262,16 @@ def find_links_in_text(text):
                 ...
     
     for img in soup.findAll('img'):
-        print("found an image:", img.get('src'))
+        print("img structure: ", img)
+        img_src = img.get('src')
+        print("found an image:", img_src)
         # make a local copy of the image as an asset for this page
-         
+        # and return new url to it
+        relative_url = urlparse(article['publicUrl']).path
+        new_path = get_local_image( img_src, article)
+        # replace the src of the image in the img element
+        img['src'] = new_path
+        print("image saved at: ", new_path)
 
     return str(soup)        
             
@@ -255,7 +285,7 @@ def markdown_from_article(article):
 
 def markdown_hugo_from_article(article):
     print("\n*** Processing ", article['slug'])
-    newtext = find_links_in_text(article['text'])
+    newtext = find_links_in_text(article)
     try:
         body = html_to_markdown(newtext)
     except:
