@@ -124,12 +124,15 @@ def get_local_image(url, article):
     if not os.path.exists(base_path):
         os.mkdirsx(base_path)
 
-    path = "/".join([base_path, split_url.path.rsplit('/', 1)[-1]])
+    relative_path = split_url.path.rsplit('/', 1)[-1]
+
+    path = "/".join([base_path, relative_path] )
     try:
         urlretrieve(url, path)
     except HTTPError:
-        path = None
-    return path
+        print("Error saving image from: ", url)
+
+    return relative_path
 
 
 def metadata_to_frontmatter(metadata):
