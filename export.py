@@ -11,7 +11,6 @@ from bs4 import BeautifulSoup as bs
 from urllib.parse import urlsplit, urlparse
 from urllib.request import urlretrieve
 from urllib.error import HTTPError
-import html
 
 from datetime import datetime
 
@@ -104,7 +103,6 @@ class HelpScout(object):
 
         article['categories'] = catslugs
         article['categories_by_name'] = catnames
-        #article['tags'] = ['docs']
 
         return article
 
@@ -115,10 +113,9 @@ def get_local_image(url, article):
     
     # find the bit we could use as a filename in the url
     split_url = urlsplit(url)
+
     # make path components if they don't exist yet
-
     primary_category_name = article['categories_by_name'][0]
-
     base_path = 'articles/{}/{}'.format(primary_category_name, article['slug'])
 
     if not os.path.exists(base_path):
@@ -147,7 +144,6 @@ def html_to_markdown(html):
 def article_to_metadata(article):
     safe_keywords = None
     try:
-        #print(article['keywords'])
         safe_keywords = article['keywords']
     except KeyError:
         safe_keywords = '[]'
@@ -167,7 +163,6 @@ def article_to_metadata(article):
 def article_to_metadata_hugo(article):
     safe_keywords = None
     try:
-        #print(article['keywords'])
         safe_keywords = article['keywords']
     except KeyError:
         safe_keywords = []
@@ -209,9 +204,8 @@ def find_links_in_text(article):
 
     for link in soup.findAll('a'):
         href=link.get('href')
-        print("link content is", link.content)
-        #if it's a "local" link, strip off the base url and number, leaving the slug
 
+        #if it's a "local" link, strip off the base url and number, leaving the slug
         if href is not None:
 
             split_href = urlsplit(href)
@@ -232,7 +226,6 @@ def find_links_in_text(article):
                 else:
                     restype="UNKNOWN TYPE"
                     newlink = re.sub('^\d+-', '', split_href.path)
-                print("link to local ",restype, href)  
 
                 link['href'] = newlink
 
@@ -260,14 +253,11 @@ def find_links_in_text(article):
                 ...
 
             else:
-                print("Other link: ", href)
                 # ACTION: leave in place
                 ...
     
     for img in soup.findAll('img'):
-        print("img structure: ", img)
         img_src = img.get('src')
-        print("found an image:", img_src)
         # make a local copy of the image as an asset for this page
         # and return new url to it
         relative_url = urlparse(article['publicUrl']).path
